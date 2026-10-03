@@ -2,7 +2,7 @@
 
 A personal portfolio website with three projects I built using HTML, CSS and JavaScript. No frameworks, no installs: open `index.html` and everything works.
 
-**Live site:** https://kaderaweye-cmyk.github.io/portfolio/
+**Live site:** https://aweye786.github.io/portfolio/
 
 ## Projects
 
@@ -40,4 +40,5 @@ projects/job-tracker/         Job Application Tracker
 
 ## Contact
 
-- GitHub: https://github.com/kaderaweye-cmyk
+- Email: kaderaweye@gmail.com
+- GitHub: https://github.com/aweye786
