@@ -26,6 +26,7 @@
 <body>
 <canvas id="c" width="1280" height="720"></canvas>
 <div id="bar">
+  <button id="bTrack">Track: Sunny Meadow</button>
   <button id="bGas">Gas: Auto</button>
   <button id="bLevel">Level: Normal</button>
   <button id="bSound">Sound: On</button>
@@ -51,12 +52,36 @@ const step = 1 / 60;
 const baseMax = segmentLength / step;
 let maxSpeed, accel, breaking, decel, offRoadDecel, offRoadLimit;
 
-const COLORS = {
-  LIGHT: { road: '#5d6270', grass: '#3dbb4f', rumble: '#e03232', lane: '#ffffff' },
-  DARK:  { road: '#575c69', grass: '#34ab46', rumble: '#ffffff' },
-  START: { road: '#ffffff', grass: '#3dbb4f', rumble: '#ffffff' },
-};
-const SKY_TOP = '#2f8dff', SKY_LOW = '#cdeeff', FOG = '#cdeeff';
+// Four tracks, each with its own look, scenery and road layout.
+const THEMES = [
+  { name: 'Sunny Meadow', sky: ['#2f8dff', '#cdeeff'], fog: '#cdeeff', grass: ['#3dbb4f', '#34ab46'], road: ['#5d6270', '#575c69'],
+    rumble: ['#e03232', '#ffffff'], lane: '#ffffff', far: '#8db3d6', near: '#4a9a63', clouds: 'rgba(255,255,255,0.9)',
+    sun: { x: 0.72, y: 120, r: 120, c: '255,240,150' }, tree: ['#1d7a38', '#25923f', '#33ad4a'], bush: '#2a9a44', rock: '#8b8f9c',
+    scenery: [['tree', 0.6], ['bush', 0.25], ['rock', 0.15]] },
+  { name: 'Desert Sunset', sky: ['#ff6b3d', '#ffd6a0'], fog: '#ffd6a0', grass: ['#e9b869', '#dcab5c'], road: ['#4c4a55', '#46444f'],
+    rumble: ['#ffffff', '#e0492b'], lane: '#ffe08a', far: '#d1784a', near: '#a85a3a', clouds: 'rgba(255,220,190,0.75)',
+    sun: { x: 0.5, y: 230, r: 230, c: '255,200,110' }, tree: ['#3d7a3a', '#4c9446', '#5fae55'], bush: '#9a8a3c', rock: '#b8744a',
+    scenery: [['cactus', 0.5], ['rock', 0.25], ['bush', 0.25]] },
+  { name: 'Neon Night', sky: ['#05021f', '#3b1b7d'], fog: '#2a1560', grass: ['#101c3d', '#0c1632'], road: ['#1d1d30', '#191928'],
+    rumble: ['#ff2bd6', '#22e6ff'], lane: '#22e6ff', far: '#2c1c6e', near: '#1a1052', clouds: null, stars: true, night: true,
+    sun: { x: 0.74, y: 110, r: 90, c: '210,220,255' }, moon: true, tree: ['#0d3b4f', '#115069', '#16647f'], bush: '#0f4d5e', rock: '#3b3f63',
+    scenery: [['lamp', 0.4], ['tree', 0.35], ['rock', 0.1], ['bush', 0.15]] },
+  { name: 'Snowy Peaks', sky: ['#6aa6e8', '#eaf6ff'], fog: '#eaf6ff', grass: ['#f6faff', '#e4eef8'], road: ['#6c7482', '#667080'],
+    rumble: ['#d12f3a', '#ffffff'], lane: '#ffffff', far: '#b3c8e6', near: '#e9f2fc', clouds: 'rgba(255,255,255,0.85)', snow: true,
+    sun: { x: 0.3, y: 110, r: 110, c: '255,255,230' }, tree: ['#1c6b46', '#238356', '#2c9d66'], caps: true, bush: '#dfeaf6', rock: '#9fb4cf',
+    scenery: [['tree', 0.55], ['snowman', 0.1], ['rock', 0.2], ['bush', 0.15]] },
+];
+let COLORS, SKY_TOP, SKY_LOW, FOG, THEME, trackIdx = 0;
+function applyTheme(i) {
+  trackIdx = i; THEME = THEMES[i];
+  COLORS = {
+    LIGHT: { road: THEME.road[0], grass: THEME.grass[0], rumble: THEME.rumble[0], lane: THEME.lane },
+    DARK:  { road: THEME.road[1], grass: THEME.grass[1], rumble: THEME.rumble[1] },
+    START: { road: '#ffffff', grass: THEME.grass[0], rumble: '#ffffff' },
+  };
+  SKY_TOP = THEME.sky[0]; SKY_LOW = THEME.sky[1]; FOG = THEME.fog;
+}
+applyTheme(0);
 
 // ---------- helpers ----------
 const limit = (v, a, b) => Math.max(a, Math.min(v, b));
@@ -128,25 +153,70 @@ const SIGN_TEXT = ['GO!', 'WOW!', 'FUN', 'ZOOM', 'YAY!', 'FAST', 'HI!', 'WHEE'];
 const SIGN_COLORS = ['#ff4d6d', '#ffb300', '#2fb8ff', '#8a5cff', '#22c55e'];
 const lineSeg = 2, lineZ = lineSeg * segmentLength;
 
+function pickWeighted(list) {
+  let r = Math.random();
+  for (const [type, w] of list) { if ((r -= w) < 0) return type; }
+  return list[0][0];
+}
 function buildTrack() {
   segments = [];
-  addStraight(ROAD.SHORT);
-  addHill(ROAD.SHORT, HILL.LOW);
-  addLowRollingHills();
-  addSCurves();
-  addCurve(ROAD.MEDIUM, CURVE.MEDIUM, HILL.LOW);
-  addBumps();
-  addLowRollingHills();
-  addCurve(ROAD.LONG * 2, CURVE.MEDIUM, HILL.MEDIUM);
-  addStraight();
-  addHill(ROAD.MEDIUM, HILL.HIGH);
-  addSCurves();
-  addCurve(ROAD.LONG, -CURVE.MEDIUM, HILL.NONE);
-  addHill(ROAD.LONG, HILL.HIGH);
-  addCurve(ROAD.LONG, CURVE.MEDIUM, -HILL.LOW);
-  addHill(ROAD.LONG, -HILL.MEDIUM);
-  addStraight();
-  addSCurves();
+  if (trackIdx === 0) {            // Sunny Meadow: a friendly mix of curves and hills
+    addStraight(ROAD.SHORT);
+    addHill(ROAD.SHORT, HILL.LOW);
+    addLowRollingHills();
+    addSCurves();
+    addCurve(ROAD.MEDIUM, CURVE.MEDIUM, HILL.LOW);
+    addBumps();
+    addLowRollingHills();
+    addCurve(ROAD.LONG * 2, CURVE.MEDIUM, HILL.MEDIUM);
+    addStraight();
+    addHill(ROAD.MEDIUM, HILL.HIGH);
+    addSCurves();
+    addCurve(ROAD.LONG, -CURVE.MEDIUM, HILL.NONE);
+    addHill(ROAD.LONG, HILL.HIGH);
+    addCurve(ROAD.LONG, CURVE.MEDIUM, -HILL.LOW);
+    addHill(ROAD.LONG, -HILL.MEDIUM);
+    addStraight();
+    addSCurves();
+  } else if (trackIdx === 1) {     // Desert Sunset: long fast sweepers and dips
+    addStraight(ROAD.SHORT);
+    addCurve(ROAD.LONG, CURVE.EASY, HILL.LOW);
+    addHill(ROAD.MEDIUM, HILL.HIGH);
+    addCurve(ROAD.MEDIUM, -CURVE.MEDIUM, -HILL.LOW);
+    addSCurves();
+    addCurve(ROAD.LONG, CURVE.MEDIUM, HILL.NONE);
+    addBumps();
+    addCurve(ROAD.MEDIUM, -CURVE.HARD, HILL.NONE);
+    addStraight();
+    addLowRollingHills();
+    addCurve(ROAD.LONG, CURVE.EASY, -HILL.LOW);
+    addSCurves();
+  } else if (trackIdx === 2) {     // Neon Night: twisty and technical, with hairpins
+    addStraight(ROAD.SHORT);
+    addSCurves();
+    addCurve(ROAD.MEDIUM, CURVE.HARD, HILL.NONE);
+    addCurve(ROAD.MEDIUM, -CURVE.HARD, HILL.LOW);
+    addLowRollingHills();
+    addSCurves();
+    addCurve(ROAD.LONG, -CURVE.MEDIUM, HILL.LOW);
+    addBumps();
+    addCurve(ROAD.MEDIUM, CURVE.HARD, HILL.MEDIUM);
+    addCurve(ROAD.MEDIUM, -CURVE.HARD, -HILL.LOW);
+    addSCurves();
+    addStraight(ROAD.SHORT);
+  } else {                         // Snowy Peaks: big climbs and plunges
+    addStraight(ROAD.SHORT);
+    addHill(ROAD.LONG, HILL.HIGH);
+    addCurve(ROAD.LONG, -CURVE.MEDIUM, -HILL.MEDIUM);
+    addSCurves();
+    addHill(ROAD.MEDIUM, HILL.HIGH);
+    addCurve(ROAD.MEDIUM, CURVE.HARD, -HILL.HIGH);
+    addLowRollingHills();
+    addBumps();
+    addCurve(ROAD.LONG, CURVE.MEDIUM, HILL.MEDIUM);
+    addHill(ROAD.MEDIUM, -HILL.MEDIUM);
+    addSCurves();
+  }
   addDownhillToEnd();
 
   segments[lineSeg].color = COLORS.START;
@@ -156,12 +226,12 @@ function buildTrack() {
   // scenery on both sides of the road
   for (let n = 8; n < segments.length - 4; n += 4) {
     if (Math.random() < 0.8) {
-      const side = pick([-1, 1]), r = Math.random();
-      const type = r < 0.6 ? 'tree' : r < 0.85 ? 'bush' : 'rock';
+      const side = pick([-1, 1]), type = pickWeighted(THEME.scenery);
       segments[n].sprites.push({ type, offset: side * (1.35 + Math.random() * 2.4), cw: type === 'tree' ? 0.3 : 0.35, solid: type !== 'bush' });
     }
-    if (Math.random() < 0.25) {
-      segments[n + 1].sprites.push({ type: 'tree', offset: pick([-1, 1]) * (4.5 + Math.random() * 3), cw: 0, solid: false });
+    if (Math.random() < 0.25) {      // far-away scenery, just for looks
+      segments[n + 1].sprites.push({ type: THEME.night ? 'building' : (trackIdx === 1 ? 'cactus' : 'tree'),
+        offset: pick([-1, 1]) * (4.5 + Math.random() * 3), cw: 0, solid: false, seed: Math.random() });
     }
   }
   for (let n = 40; n < segments.length - 20; n += 60) {
@@ -184,7 +254,7 @@ const CAR_COLORS = ['#2fb8ff', '#22c55e', '#ffb300', '#8a5cff', '#ff6fd0', '#fff
 function resetCars() {
   segments.forEach(s => { s.cars = []; });
   cars = [];
-  const total = easy ? 14 : 28;
+  const total = (easy ? 12 : 22) + 4 * trackIdx;      // later tracks are busier
   for (let n = 0; n < total; n++) {
     const offset = Math.random() * pick([-0.8, 0.8]);
     const z = Math.floor(Math.random() * segments.length) * segmentLength;
@@ -274,12 +344,15 @@ let state = 'title', paused = false, easy = false, autoGas = true;
 let position = 0, speed = 0, playerX = 0, steerVis = 0, bounce = 0, boostT = 0, shakeT = 0;
 let skyOffset = 0, hillOffset = 0, treeOffset = 0;
 let stars = 0, lapsDone = 0, totalLaps = 3, raceTime = 0, lapStart = 0, countdownT = 0, prevPz = 0, finishT = 0;
-let toast = null, tAnim = 0, bestLap = 0, bestRace = 0;
-try { bestLap = +(localStorage.getItem('racer-bestlap') || 0); bestRace = +(localStorage.getItem('racer-bestrace') || 0); } catch (e) {}
+let toast = null, tAnim = 0, bestLap = 0, bestRace = 0, bg = null;
+function loadBests() {
+  try { bestLap = +(localStorage.getItem('racer-bestlap-' + trackIdx) || 0); bestRace = +(localStorage.getItem('racer-bestrace-' + trackIdx) || 0); } catch (e) { bestLap = bestRace = 0; }
+}
+function saveBest(kind, v) { try { localStorage.setItem('racer-best' + kind + '-' + trackIdx, v); } catch (e) {} }
 const keys = { left: false, right: false, gas: false, brake: false };
 
 function applyDifficulty() {
-  maxSpeed = baseMax * (easy ? 0.78 : 1);
+  maxSpeed = baseMax * (easy ? 0.78 : 1) * (1 + 0.05 * trackIdx);
   accel = maxSpeed / 5; breaking = -maxSpeed; decel = -maxSpeed / 5;
   offRoadDecel = -maxSpeed / 2; offRoadLimit = maxSpeed / 4;
   totalLaps = easy ? 2 : 3;
@@ -296,13 +369,21 @@ function startRace() {
   resetRace();
   state = 'countdown'; countdownT = 4.2;
 }
+function loadTrack(i) {
+  applyTheme(i); buildTrack(); bg = null; flakes = null;
+  loadBests(); resetRace();
+  const b = document.getElementById('bTrack'); if (b) b.textContent = 'Track: ' + THEME.name;
+}
 const say = (txt, color) => { toast = { txt, color: color || '#fff', life: 150 }; };
 
 // ---------- input ----------
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
                  ArrowUp: 'gas', w: 'gas', W: 'gas', ArrowDown: 'brake', s: 'brake', S: 'brake' };
 function setSound(on) { soundOn = on; document.getElementById('bSound').textContent = 'Sound: ' + (on ? 'On' : 'Off'); }
-function tryStart() { if (state === 'title' || state === 'finished') startRace(); }
+function tryStart() {
+  if (state === 'finished') loadTrack((trackIdx + 1) % THEMES.length);   // after a win, move on to the next track
+  if (state === 'title' || state === 'finished') startRace();
+}
 addEventListener('keydown', e => {
   ensureAudio();
   if (e.key === 'p' || e.key === 'P') { paused = !paused; return; }
@@ -318,6 +399,10 @@ document.querySelectorAll('#pad button').forEach(b => {
   const k = b.dataset.k;
   b.addEventListener('pointerdown', e => { ensureAudio(); tryStart(); keys[k] = true; e.preventDefault(); });
   ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => { keys[k] = false; }));
+});
+document.getElementById('bTrack').addEventListener('click', e => {
+  if (state === 'race' || state === 'countdown') { e.target.blur(); return; }   // not during a race
+  state = 'title'; loadTrack((trackIdx + 1) % THEMES.length); e.target.blur();
 });
 document.getElementById('bGas').addEventListener('click', e => {
   autoGas = !autoGas; e.target.textContent = 'Gas: ' + (autoGas ? 'Auto' : 'Manual (Up key)'); e.target.blur();
@@ -395,10 +480,10 @@ function update(dt) {
       if (prevPz < lineZ && pz >= lineZ && speed > 0) {
         lapsDone++;
         const lapTime = raceTime - lapStart; lapStart = raceTime;
-        if (!bestLap || lapTime < bestLap) { bestLap = lapTime; try { localStorage.setItem('racer-bestlap', bestLap); } catch (e) {} }
+        if (!bestLap || lapTime < bestLap) { bestLap = lapTime; saveBest('lap', bestLap); }
         if (lapsDone >= totalLaps) {
           state = 'finished'; finishT = 0; sfx.win();
-          if (!bestRace || raceTime < bestRace) { bestRace = raceTime; try { localStorage.setItem('racer-bestrace', bestRace); } catch (e) {} }
+          if (!bestRace || raceTime < bestRace) { bestRace = raceTime; saveBest('race', bestRace); }
         } else { say('LAP ' + (lapsDone + 1) + ' of ' + totalLaps + '  \\u00B7  ' + fmt(lapTime), '#ffe600'); sfx.lap(); }
       }
       prevPz = pz;
@@ -454,20 +539,34 @@ function renderSegment(x1, y1, w1, x2, y2, w2, fog, color) {
 }
 
 // background scenery (sky, sun, clouds, mountains), drawn once into hidden canvases
-let bg = null;
 function buildBackground() {
   const mk = (h) => { const c = document.createElement('canvas'); c.width = W; c.height = h; return c; };
   const sky = mk(H / 2 + 40), sg = sky.getContext('2d');
   const grad = sg.createLinearGradient(0, 0, 0, H / 2 + 40);
   grad.addColorStop(0, SKY_TOP); grad.addColorStop(1, SKY_LOW);
   sg.fillStyle = grad; sg.fillRect(0, 0, W, H / 2 + 40);
-  const sun = sg.createRadialGradient(W * 0.72, 120, 5, W * 0.72, 120, 120);
-  sun.addColorStop(0, 'rgba(255,250,200,1)'); sun.addColorStop(0.25, 'rgba(255,240,150,0.9)'); sun.addColorStop(1, 'rgba(255,240,150,0)');
-  sg.fillStyle = sun; sg.fillRect(0, 0, W, H / 2);
+  if (THEME.stars) {                         // night sky: twinkling stars
+    for (let i = 0; i < 220; i++) {
+      sg.fillStyle = `rgba(255,255,255,${0.25 + Math.random() * 0.75})`;
+      const s = Math.random() < 0.12 ? 2.4 : 1.3;
+      sg.fillRect(Math.random() * W, Math.random() * (H / 2 - 40), s, s);
+    }
+  }
+  const sx = W * THEME.sun.x, sy = THEME.sun.y, sr = THEME.sun.r, sc = THEME.sun.c;
+  const sun = sg.createRadialGradient(sx, sy, 5, sx, sy, sr);
+  sun.addColorStop(0, `rgba(${sc},1)`); sun.addColorStop(0.25, `rgba(${sc},0.85)`); sun.addColorStop(1, `rgba(${sc},0)`);
+  sg.fillStyle = sun; sg.fillRect(0, 0, W, H / 2 + 40);
+  if (THEME.moon) {                          // a crisp moon with craters
+    sg.fillStyle = '#f4f6ff'; sg.beginPath(); sg.arc(sx, sy, 34, 0, 6.283); sg.fill();
+    sg.fillStyle = 'rgba(150,160,200,0.45)';
+    [[-10, -8, 8], [12, 6, 6], [-4, 14, 5]].forEach(([dx, dy, r]) => { sg.beginPath(); sg.arc(sx + dx, sy + dy, r, 0, 6.283); sg.fill(); });
+  } else if (trackIdx === 1) {               // desert: a huge low sun disc
+    sg.fillStyle = 'rgba(255,240,200,0.95)'; sg.beginPath(); sg.arc(sx, H / 2 - 40, 78, Math.PI, 0); sg.fill();
+  }
 
   const clouds = mk(H / 2), cg = clouds.getContext('2d');
-  cg.fillStyle = 'rgba(255,255,255,0.9)';
-  for (let i = 0; i < 7; i++) {
+  cg.fillStyle = THEME.clouds || 'rgba(0,0,0,0)';
+  for (let i = 0; THEME.clouds && i < 7; i++) {
     const cx = (i + 0.5) * W / 7, cy = 50 + Math.random() * 130;
     for (let k = 0; k < 5; k++) {
       const ex = cx + k * 26 - 52, ey = cy + (k % 2) * 8, rx = 38 + Math.random() * 14, ry = 20 + Math.random() * 8;
@@ -486,7 +585,8 @@ function buildBackground() {
     g.lineTo(W, base); g.closePath(); g.fill();
     return c;
   };
-  bg = { sky, clouds, far: ridge(210, H / 2 + 40, '#8db3d6', 9), near: ridge(130, H / 2 + 40, '#4a9a63', 12) };
+  bg = { sky, clouds, far: ridge(trackIdx === 3 ? 260 : 210, H / 2 + 40, THEME.far, trackIdx === 1 ? 6 : 9),
+         near: ridge(trackIdx === 3 ? 160 : 130, H / 2 + 40, THEME.near, 12) };
 }
 function drawLayer(img, offset, y) {
   const x = -offset * W;
@@ -545,7 +645,7 @@ function rr(c, x, y, w, h, r) {
   c.closePath();
 }
 
-const HF = { tree: 1.8, bush: 0.45, rock: 0.4, sign: 1.6, star: 0.8, arch: 1.5 };
+const HF = { tree: 1.8, bush: 0.45, rock: 0.4, sign: 1.6, star: 0.8, arch: 1.5, cactus: 1.2, lamp: 2.4, snowman: 1.2, building: 3.7 };
 function drawSprite(s, x, y, u, clipY, idx) {
   if (u < 2) return;
   const hh = (HF[s.type] || 1) * u, doClip = y > clipY;
@@ -555,21 +655,66 @@ function drawSprite(s, x, y, u, clipY, idx) {
     const w = u;
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y, w * 0.45, w * 0.07, 0, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#6b3f1d'; ctx.fillRect(x - w * 0.07, y - w * 0.35, w * 0.14, w * 0.35);
-    const greens = ['#1d7a38', '#25923f', '#33ad4a'];
+    const greens = THEME.tree;
     for (let i = 0; i < 3; i++) {
       const yb = y - w * 0.22 - i * w * 0.4, hw = w * (0.5 - i * 0.12);
       ctx.fillStyle = greens[i];
       ctx.beginPath(); ctx.moveTo(x - hw, yb); ctx.lineTo(x + hw, yb); ctx.lineTo(x, yb - w * 0.62); ctx.closePath(); ctx.fill();
+      if (THEME.caps) {                                   // snow on every branch layer
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.moveTo(x - hw * 0.55, yb - w * 0.28); ctx.lineTo(x + hw * 0.55, yb - w * 0.28); ctx.lineTo(x, yb - w * 0.62); ctx.closePath(); ctx.fill();
+      }
     }
   } else if (s.type === 'bush') {
     const w = u * 0.5;
-    ctx.fillStyle = '#2a9a44';
+    ctx.fillStyle = THEME.bush;
     [[-0.28, 0.2], [0.28, 0.2], [0, 0.32]].forEach(([dx, r]) => { ctx.beginPath(); ctx.arc(x + dx * w * 2, y - w * 0.4, w * (r + 0.2), 0, 6.283); ctx.fill(); });
-    ctx.fillStyle = '#ff6fa8';
+    ctx.fillStyle = trackIdx === 3 ? '#ff4d4d' : trackIdx === 2 ? '#22e6ff' : '#ff6fa8';
     ctx.beginPath(); ctx.arc(x - w * 0.3, y - w * 0.6, w * 0.07, 0, 6.283); ctx.arc(x + w * 0.35, y - w * 0.45, w * 0.07, 0, 6.283); ctx.fill();
+  } else if (s.type === 'cactus') {
+    const w = u * 0.5;
+    ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(x, y, w * 0.6, w * 0.08, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#3f9b4f';
+    ctx.beginPath(); rr(ctx, x - w * 0.14, y - w * 1.7, w * 0.28, w * 1.7, w * 0.14); ctx.fill();
+    ctx.beginPath(); rr(ctx, x - w * 0.52, y - w * 0.78, w * 0.46, w * 0.14, w * 0.07); ctx.fill();
+    ctx.beginPath(); rr(ctx, x - w * 0.52, y - w * 1.2, w * 0.14, w * 0.56, w * 0.07); ctx.fill();
+    ctx.beginPath(); rr(ctx, x + w * 0.06, y - w * 1.0, w * 0.46, w * 0.14, w * 0.07); ctx.fill();
+    ctx.beginPath(); rr(ctx, x + w * 0.38, y - w * 1.4, w * 0.14, w * 0.54, w * 0.07); ctx.fill();
+    ctx.fillStyle = '#62c474'; ctx.fillRect(x - w * 0.05, y - w * 1.62, w * 0.07, w * 1.55);
+    ctx.fillStyle = '#ff6fa8'; ctx.beginPath(); ctx.arc(x, y - w * 1.72, w * 0.1, 0, 6.283); ctx.fill();
+  } else if (s.type === 'lamp') {
+    const h = u * 2.0, dir = s.offset > 0 ? -1 : 1, bx = x + dir * u * 0.32, by = y - h;
+    ctx.fillStyle = '#2b2f4a'; ctx.fillRect(x - u * 0.035, by, u * 0.07, h);
+    ctx.fillRect(Math.min(x, bx), by - u * 0.02, Math.abs(bx - x), u * 0.06);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(bx, by, 0, bx, by, u * 1.0);
+    g.addColorStop(0, 'rgba(255,235,160,0.75)'); g.addColorStop(0.3, 'rgba(255,220,120,0.28)'); g.addColorStop(1, 'rgba(255,220,120,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by, u * 1.0, 0, 6.283); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(bx, by + u * 0.03, u * 0.07, 0, 6.283); ctx.fill();
+  } else if (s.type === 'snowman') {
+    const r = u * 0.28;
+    ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.beginPath(); ctx.ellipse(x, y, r * 1.2, r * 0.18, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#c7d6ee'; ctx.lineWidth = Math.max(1, r * 0.08);
+    [[y - r, r], [y - r * 2.3, r * 0.75], [y - r * 3.3, r * 0.55]].forEach(([cy, rad]) => { ctx.beginPath(); ctx.arc(x, cy, rad, 0, 6.283); ctx.fill(); ctx.stroke(); });
+    ctx.fillStyle = '#222'; ctx.fillRect(x - r * 0.5, y - r * 4.15, r, r * 0.6); ctx.fillRect(x - r * 0.72, y - r * 3.62, r * 1.44, r * 0.14);
+    ctx.fillRect(x - r * 0.25, y - r * 3.4, r * 0.1, r * 0.1); ctx.fillRect(x + r * 0.15, y - r * 3.4, r * 0.1, r * 0.1);
+    ctx.fillStyle = '#ff8a1f'; ctx.beginPath(); ctx.moveTo(x, y - r * 3.25); ctx.lineTo(x + r * 0.6, y - r * 3.15); ctx.lineTo(x, y - r * 3.05); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#222'; [2.0, 2.4].forEach(k => ctx.fillRect(x - r * 0.05, y - r * k, r * 0.1, r * 0.1));
+  } else if (s.type === 'building') {
+    const w = u * 1.5, h = u * (2.2 + (s.seed || 0) * 1.4);
+    ctx.fillStyle = '#10142e'; ctx.fillRect(x - w / 2, y - h, w, h);
+    ctx.fillStyle = '#1a2048'; ctx.fillRect(x - w / 2, y - h, w * 0.12, h);
+    const cols = 4, rows = Math.floor(h / (u * 0.3)), cw = w * 0.14, ch = u * 0.13;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const v = Math.sin((s.seed || 0) * 977 + r * 12.9898 + c * 78.233) * 43758.5453, f = v - Math.floor(v);
+      if (f < 0.45) continue;
+      ctx.fillStyle = f > 0.85 ? '#ff6fd0' : f > 0.7 ? '#22e6ff' : '#ffe27a';
+      ctx.fillRect(x - w / 2 + w * 0.12 + c * (w * 0.2), y - h + u * 0.15 + r * u * 0.3, cw, ch);
+    }
   } else if (s.type === 'rock') {
     const w = u * 0.4;
-    ctx.fillStyle = '#8b8f9c';
+    ctx.fillStyle = THEME.rock;
     ctx.beginPath(); ctx.moveTo(x - w, y); ctx.lineTo(x - w * 0.7, y - w * 0.8); ctx.lineTo(x - w * 0.1, y - w); ctx.lineTo(x + w * 0.7, y - w * 0.7); ctx.lineTo(x + w, y); ctx.closePath(); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.2)';
     ctx.beginPath(); ctx.moveTo(x - w * 0.7, y - w * 0.8); ctx.lineTo(x - w * 0.1, y - w); ctx.lineTo(x - w * 0.2, y - w * 0.5); ctx.closePath(); ctx.fill();
@@ -668,12 +813,37 @@ function render() {
       const py = H / 2 - (cameraDepth / playerZ * camY * H / 2);
       const bob = (state === 'race' || state === 'finished') ? (Math.sin(tAnim * 40) * 1.2 * (speed / maxSpeed)) : 0;
       const carPx = playerW * uPlayer * 0.78, carY = py - 14;
+      if (THEME.night) drawHeadlights(W / 2 + steerVis * 6, carY, carPx);
       drawCar(W / 2 + steerVis * 6, carY, carPx, '#e8222a', steerVis, keys.brake && state === 'race', true, bob);
       if (boostT > 0) drawFlames(W / 2 + steerVis * 6, carY, carPx);
     }
   }
   ctx.restore();
+  if (THEME.snow) drawSnow();
   if (speed / maxSpeed > 0.75 || boostT > 0) drawSpeedLines();
+}
+let flakes = null;
+function drawSnow() {
+  if (!flakes) flakes = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: rand(1, 3.2), v: rand(0.6, 2.2) }));
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  const wind = 0.4 + speed / maxSpeed * 1.2;
+  for (const f of flakes) {
+    f.y += f.v; f.x += Math.sin(f.y * 0.02 + f.s) * 0.5 - wind * 0.3;
+    if (f.y > H) { f.y = -4; f.x = Math.random() * W; }
+    if (f.x < 0) f.x += W;
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.s, 0, 6.283); ctx.fill();
+  }
+}
+function drawHeadlights(x, y, w) {            // two soft light beams for the night track
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const side of [-1, 1]) {
+    const g = ctx.createLinearGradient(0, y - w * 0.4, 0, y - w * 2.4);
+    g.addColorStop(0, 'rgba(255,244,200,0.38)'); g.addColorStop(1, 'rgba(255,244,200,0)');
+    ctx.fillStyle = g; ctx.beginPath();
+    ctx.moveTo(x + side * w * 0.28, y - w * 0.4); ctx.lineTo(x + side * w * 0.48, y - w * 0.4);
+    ctx.lineTo(x + side * w * 1.1, y - w * 2.4); ctx.lineTo(x + side * w * 0.05, y - w * 2.4); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
 }
 function drawFlames(x, y, w) {
   for (let i = 0; i < 2; i++) {
@@ -722,6 +892,7 @@ function drawHud() {
   ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 7 : 16; ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
   ctx.closePath(); ctx.fill(); ctx.restore();
   text('x ' + stars, W - 120, 53, 30, '#fff');
+  text(THEME.name, W / 2, 72, 20, '#ffffff', 'center');   // which track we're on
   // lap progress
   const prog = state === 'title' ? 0 : ((((position + playerZ) % trackLength) - lineZ + trackLength) % trackLength) / trackLength;
   panel(W / 2 - 160, 20, 320, 26);
@@ -756,7 +927,7 @@ function draw() {
     banner('FINISH!', '#7CFF6B', [
       'Your time: ' + fmt(raceTime) + '    Stars: ' + stars,
       'Best race: ' + fmt(bestRace) + '    Best lap: ' + fmt(bestLap),
-      'Click here or press SPACE to race again',
+      'Next track: ' + THEMES[(trackIdx + 1) % THEMES.length].name + ' - click here or press SPACE',
     ]);
   }
   if (paused) banner('PAUSED', '#fff', ['Press P to keep racing']);
@@ -770,9 +941,7 @@ function loop(now) {
   draw();
   requestAnimationFrame(loop);
 }
-buildTrack();
-applyDifficulty();
-resetRace();
+loadTrack(0);
 if (location.hash === '#race') startRace();   // handy for quick testing
 requestAnimationFrame(loop);
 </script>

@@ -39,7 +39,7 @@ const canvas = document.getElementById('c');
 canvas.width = W * S; canvas.height = H * S;
 const ctx = canvas.getContext('2d');
 
-const LAYOUT = [
+const LAYOUT1 = [
   "###################",
   "#........#........#",
   "#o##.###.#.###.##o#",
@@ -63,6 +63,34 @@ const LAYOUT = [
   "###################",
 ];
 
+// The ghost house (rows 6-12) is the same in every maze; the rest of each maze is different.
+const CORE = LAYOUT1.slice(6, 13);
+const LAYOUTS = [
+  LAYOUT1,
+  [ "###################", "#........#........#", "#.###.##.#.##.###.#", "#o...............o#", "#.###.#.###.#.###.#", "#....#...#...#....#",
+    ...CORE,
+    "#........#........#", "#.###.##.#.##.###.#", "#o.......P.......o#", "#.###.#.###.#.###.#", "#....#...#...#....#", "#.######.#.######.#", "#.................#", "###################" ],
+  [ "###################", "#....#.......#....#", "#o##.#.#####.#.##o#", "#....#...#...#....#", "##.#.###.#.###.#.##", "#.................#",
+    ...CORE,
+    "#.................#", "##.#.###.#.###.#.##", "#o...#.......#...o#", "#.##.#.#####.#.##.#", "#....#...#...#....#", "#.#####.#.#.#####.#", "#.................#", "###################" ],
+  [ "###################", "#........#........#", "#.##.###.#.###.##.#", "#o..#.........#..o#", "#.#.#.###.###.#.#.#", "#.....#.....#.....#",
+    ...CORE,
+    "#.....#.....#.....#", "#.#.#.###.###.#.#.#", "#o..#....P....#..o#", "#.##.###.#.###.##.#", "#........#........#", "#.######.#.######.#", "#.................#", "###################" ],
+];
+// Each maze has its own glowing colour theme.
+const THEMES = [
+  { name: 'Neon Blue',    bg0: '#04051c', bg1: '#0a0b30', fill: 'rgba(48,80,255,0.16)',  glow: '#2a3bff', core: '#8fb0ff', halo: '#4d6bff', accent: '#8fb0ff' },
+  { name: 'Garden Green', bg0: '#03140a', bg1: '#06240f', fill: 'rgba(34,197,94,0.14)',  glow: '#16a34a', core: '#86efac', halo: '#22c55e', accent: '#86efac' },
+  { name: 'Royal Purple', bg0: '#0d041c', bg1: '#1a0a33', fill: 'rgba(139,92,246,0.16)', glow: '#7c3aed', core: '#c4b5fd', halo: '#a78bfa', accent: '#c4b5fd' },
+  { name: 'Lava Orange',  bg0: '#1a0604', bg1: '#2e0c06', fill: 'rgba(249,115,22,0.15)', glow: '#ea580c', core: '#fdba74', halo: '#fb923c', accent: '#fdba74' },
+];
+const themeNow = () => THEMES[(level - 1) % THEMES.length];
+const FRUITS = [
+  { name: 'Cherry', pts: 100, color: '#ff3b5c' }, { name: 'Strawberry', pts: 300, color: '#ff5a7a' },
+  { name: 'Orange', pts: 500, color: '#ffa133' }, { name: 'Apple', pts: 700, color: '#8cff6b' },
+  { name: 'Melon', pts: 1000, color: '#7cffb0' },
+];
+
 const DIRS = {
   left:  { x: -1, y: 0, a: Math.PI },
   right: { x: 1,  y: 0, a: 0 },
@@ -73,13 +101,17 @@ const DIRS = {
 const ALL = [DIRS.up, DIRS.left, DIRS.down, DIRS.right];
 const opposite = (a, b) => a.x === -b.x && a.y === -b.y && (a.x || a.y);
 
-let map, dotsLeft;
+let map, dotsLeft, totalDots = 0, fruit = null, fruitSpawned = 0, distHouse, distExit;
 function buildMap() {
   dotsLeft = 0;
-  map = LAYOUT.map(r => r.padEnd(COLS, ' ').split('').map(ch => {
+  const layout = LAYOUTS[(level - 1) % LAYOUTS.length];
+  map = layout.map(r => r.padEnd(COLS, ' ').split('').map(ch => {
     if (ch === '.' || ch === 'o') dotsLeft++;
     return ch === 'P' ? ' ' : ch;
   }));
+  totalDots = dotsLeft; fruit = null; fruitSpawned = 0;
+  mazeLayer = null;                       // repaint the walls in this level's colours
+  distHouse = bfs(9, 9); distExit = bfs(9, 7);
 }
 
 const wrapX = x => (x + COLS) % COLS;
@@ -106,9 +138,6 @@ function bfs(sx, sy) {
   }
   return dist;
 }
-buildMap();
-const distHouse = bfs(9, 9), distExit = bfs(9, 7);
-
 const aligned = e => e.px % T === 0 && e.py % T === 0;
 function advance(e, speed) {
   for (let i = 0; i < speed; i++) {
@@ -145,13 +174,14 @@ const sfx = {
   die()   { tone(700, 0.9, 'sawtooth', 0.07, -620); },
   start() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.14, 'square', 0.05, 0, i * 0.11)); },
   win()   { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.16, 'triangle', 0.08, 0, i * 0.1)); },
+  fruit() { [880, 1175, 1568].forEach((f, i) => tone(f, 0.1, 'square', 0.06, 0, i * 0.06)); },
 };
 
 // ---- game state ----
 let state = 'title', stateTimer = 0, frame = 0;
 let score = 0, lives = 3, level = 1, best = 0;
 try { best = +(localStorage.getItem('sqpac-best') || 0); } catch (e) {}
-let fright = 0, combo = 0, modeClock = 0, paused = false, easy = false;
+let fright = 0, combo = 0, modeClock = 0, paused = false, easy = false, intro = false;
 let pac, ghosts, parts = [], popups = [];
 
 const GHOST_DEFS = [
@@ -168,13 +198,13 @@ function resetActors() {
     dir: d.delay ? DIRS.none : DIRS.left, mode: d.delay ? 'house' : 'normal',
     wait: easy ? d.delay * 1.5 : d.delay, scared: false,
   }));
-  fright = 0; combo = 0; modeClock = 0;
+  fright = 0; combo = 0; modeClock = 0; fruit = null;
 }
 
 function newGame() {
   score = 0; lives = easy ? 5 : 3; level = 1;
   buildMap(); resetActors(); parts = []; popups = [];
-  state = 'ready'; stateTimer = 120;
+  state = 'ready'; stateTimer = 150; intro = true;
   sfx.start();
 }
 
@@ -276,6 +306,23 @@ function ghostTarget(g, pt) {
   }
 }
 
+// Bonus fruit appears twice per level, below the ghost house, for a few seconds.
+function updateFruit() {
+  const eaten = totalDots - dotsLeft;
+  if (!fruit && ((fruitSpawned === 0 && eaten >= totalDots * 0.3) || (fruitSpawned === 1 && eaten >= totalDots * 0.65))) {
+    fruitSpawned++; fruit = { t: 600, kind: (level - 1) % FRUITS.length };
+  }
+  if (!fruit) return;
+  if (--fruit.t <= 0) { fruit = null; return; }
+  if (Math.hypot(pac.px - 9 * T, pac.py - 15 * T) < T * 0.7) {
+    const f = FRUITS[fruit.kind];
+    score += f.pts;
+    popup(9 * T + T / 2, 15 * T, '+' + f.pts, f.color);
+    burst(9 * T + T / 2, 15 * T + T / 2, 20, f.color, 2.2);
+    sfx.fruit(); fruit = null;
+  }
+}
+
 function updateGhost(g) {
   if (g.mode === 'house') {
     if (--g.wait <= 0) { g.mode = 'leaving'; g.dir = DIRS.none; }
@@ -349,10 +396,11 @@ function update() {
   popups = popups.filter(p => p.life > 0);
 
   if (state === 'ready') {
-    if (--stateTimer <= 0) state = 'play';
+    if (--stateTimer <= 0) { state = 'play'; intro = false; }
   } else if (state === 'play') {
     modeClock++;
     updatePac();
+    updateFruit();
     ghosts.forEach(updateGhost);
     if (fright > 0 && --fright === 0) ghosts.forEach(g => g.scared = false);
     checkCollisions();
@@ -364,7 +412,7 @@ function update() {
       else { resetActors(); state = 'ready'; stateTimer = 90; }
     }
   } else if (state === 'win') {
-    if (--stateTimer <= 0) { level++; buildMap(); resetActors(); state = 'ready'; stateTimer = 90; }
+    if (--stateTimer <= 0) { level++; buildMap(); resetActors(); state = 'ready'; stateTimer = 150; intro = true; }
   }
   if (score > best) { best = score; try { localStorage.setItem('sqpac-best', best); } catch (e) {} }
 }
@@ -383,8 +431,9 @@ function buildLayers() {
   const mh = ROWS * T;
   mazeLayer = document.createElement('canvas'); mazeLayer.width = W * S; mazeLayer.height = mh * S;
   const g = mazeLayer.getContext('2d'); g.scale(S, S);
+  const th = themeNow();
   const bg = g.createLinearGradient(0, 0, 0, mh);
-  bg.addColorStop(0, '#04051c'); bg.addColorStop(1, '#0a0b30');
+  bg.addColorStop(0, th.bg0); bg.addColorStop(1, th.bg1);
   g.fillStyle = bg; g.fillRect(0, 0, W, mh);
   for (let i = 0; i < 90; i++) {            // faint twinkling-star specks in the background
     g.fillStyle = `rgba(150,170,255,${0.08 + Math.random() * 0.18})`;
@@ -392,11 +441,11 @@ function buildLayers() {
   }
   const isWall = (x, y) => y >= 0 && y < ROWS && x >= 0 && x < COLS && map[y][x] === '#';
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-    if (map[y][x] === '#') { g.fillStyle = 'rgba(48,80,255,0.16)'; g.fillRect(x * T, y * T, T, T); }
+    if (map[y][x] === '#') { g.fillStyle = th.fill; g.fillRect(x * T, y * T, T, T); }
   }
   g.lineCap = 'round'; g.lineJoin = 'round';
-  for (const [w, color, blur] of [[5, '#2a3bff', 14], [2.5, '#8fb0ff', 0]]) {   // glow pass, then bright core
-    g.lineWidth = w; g.strokeStyle = color; g.shadowColor = '#4d6bff'; g.shadowBlur = blur;
+  for (const [w, color, blur] of [[5, th.glow, 14], [2.5, th.core, 0]]) {   // glow pass, then bright core
+    g.lineWidth = w; g.strokeStyle = color; g.shadowColor = th.halo; g.shadowBlur = blur;
     g.beginPath();
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       if (!isWall(x, y)) continue;
@@ -437,6 +486,33 @@ function drawMaze() {
       ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, 6.283); ctx.fill();
     }
   }
+}
+
+function drawFruit() {
+  if (!fruit || (fruit.t < 120 && Math.floor(fruit.t / 8) % 2)) return;   // blinks just before it disappears
+  const cx = 9 * T + T / 2, cy = 15 * T + T / 2 + Math.sin(frame * 0.12) * 1.5, k = fruit.kind;
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.shadowColor = FRUITS[k].color; ctx.shadowBlur = 12;
+  const ball = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); };
+  if (k === 0) {                                   // cherry
+    ctx.strokeStyle = '#3aa655'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-4, 2); ctx.quadraticCurveTo(-1, -8, 4, -9); ctx.moveTo(4, 3); ctx.quadraticCurveTo(5, -6, 4, -9); ctx.stroke();
+    ball(-4, 4, 4.5, '#ff3b5c'); ball(4, 5, 4.5, '#e11d48');
+  } else if (k === 1) {                            // strawberry
+    ctx.fillStyle = '#ff3b5c'; ctx.beginPath(); ctx.moveTo(-7, -4); ctx.lineTo(7, -4); ctx.lineTo(0, 9); ctx.closePath(); ctx.fill();
+    ball(-6, -3, 3, '#ff3b5c'); ball(6, -3, 3, '#ff3b5c'); ball(0, -4, 4, '#ff3b5c');
+    ctx.fillStyle = '#4ade80'; ctx.fillRect(-4, -8, 8, 3);
+    ctx.fillStyle = '#ffe9a8'; [[-3, 0], [2, 1], [0, 4], [-1, -2]].forEach(([x, y]) => ctx.fillRect(x, y, 1.4, 1.4));
+  } else if (k === 2) {                            // orange
+    ball(0, 1, 7.5, '#ffa133'); ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(3, -7, 4, 2, -0.5, 0, 6.283); ctx.fill();
+  } else if (k === 3) {                            // apple
+    ball(-3, 1, 5.5, '#ff3b3b'); ball(3, 1, 5.5, '#ff3b3b');
+    ctx.strokeStyle = '#7a4a1d'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(1, -8); ctx.stroke();
+    ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(4, -7, 3.5, 1.8, -0.4, 0, 6.283); ctx.fill();
+  } else {                                         // melon
+    ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(0, 1, 9, 7, 0, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(-5, -4); ctx.lineTo(-5, 6); ctx.moveTo(0, -6); ctx.lineTo(0, 8); ctx.moveTo(5, -4); ctx.lineTo(5, 6); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawPac(x, y, mini) {
@@ -552,6 +628,7 @@ function draw() {
 
   ctx.setTransform(S, 0, 0, S, 0, HUD * S);
   drawMaze();
+  drawFruit();
 
   if (state !== 'title') {
     for (const ox of [0, W, -W]) {
@@ -571,7 +648,10 @@ function draw() {
   ctx.globalAlpha = 1;
 
   if (state === 'title') banner('SQUARE PAC-MAN', '#ffe600', 'Click here or press SPACE to start');
-  else if (state === 'ready') text('READY!', W / 2, 11 * T + 17, 20, '#ffe600', 'center');
+  else if (state === 'ready') {
+    if (intro && stateTimer > 50) banner('LEVEL ' + level, themeNow().accent, themeNow().name);
+    else text('READY!', W / 2, 11 * T + 17, 20, '#ffe600', 'center');
+  }
   else if (state === 'over') banner('GAME OVER', '#ff4a4a', 'Click here or press SPACE to retry');
   else if (state === 'win') banner('LEVEL CLEAR!', '#ffe600');
   if (paused) banner('PAUSED', '#fff');
@@ -588,6 +668,7 @@ function loop(now) {
   draw();
   requestAnimationFrame(loop);
 }
+buildMap();
 resetActors();
 requestAnimationFrame(loop);
 </script>

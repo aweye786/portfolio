@@ -8,8 +8,8 @@ A personal portfolio website with three projects I built using HTML, CSS and Jav
 
 | Project | What it is | Skills shown |
 |---|---|---|
-| **Square Pac-Man** (`games/pacman.html`) | Pac-Man where the hero is a square. 4 ghosts with different behaviour, power pellets, levels, sound, Easy mode. | JavaScript, Canvas, game loop, path-finding (BFS), Web Audio |
-| **Turbo Racer 3D** (`games/racer.html`) | Arcade racer with a 3D-perspective road, hills, traffic and turbo stars. | Perspective maths, Canvas, input handling, touch controls |
+| **Square Pac-Man** (`games/pacman.html`) | Pac-Man where the hero is a square. 4 different glowing mazes, 4 ghosts with different behaviour, bonus fruit, sound, Easy mode. | JavaScript, Canvas, game loop, path-finding (BFS), level design, Web Audio |
+| **Turbo Racer 3D** (`games/racer.html`) | Arcade racer with a 3D-perspective road and 4 themed tracks (meadow, desert, neon night, snow), traffic and turbo stars. | Perspective maths, Canvas, theming, lighting effects, input handling, touch controls |
 | **Job Application Tracker** (`projects/job-tracker/`) | A board for tracking job applications, with follow-up reminders and CSV export. | HTML/CSS, DOM, localStorage, responsive design |
 
 ## Run it locally
