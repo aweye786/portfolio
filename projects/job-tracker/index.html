@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Application Tracker</title>
+<style>
+  :root { --bg: #f4f5fb; --card: #fff; --text: #1b2036; --muted: #5d647f; --accent: #4f46e5; --border: #e1e4f2;
+          --applied: #3b82f6; --interviewing: #f59e0b; --offer: #22c55e; --rejected: #9ca3af; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1020; --card: #171b33; --text: #eef0ff; --muted: #a2a9cf; --accent: #8b87ff; --border: #262c52; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, Arial, sans-serif; }
+  header { padding: 22px 20px 8px; max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  h1 { margin: 0; font-size: 26px; }
+  a { color: var(--accent); font-weight: 600; }
+  header a { text-decoration: none; }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 20px 50px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 18px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 8px 16px; font-size: 14px; color: var(--muted); }
+  .stat b { display: block; font-size: 22px; color: var(--text); }
+  form { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: grid; gap: 10px;
+         grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 22px; }
+  label { font-size: 12px; font-weight: 700; color: var(--muted); display: grid; gap: 4px; }
+  input, select, textarea { font: inherit; padding: 9px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; }
+  textarea { resize: vertical; min-height: 40px; }
+  .wide { grid-column: 1 / -1; }
+  button { font: inherit; font-weight: 700; padding: 10px 18px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+  button.small { padding: 4px 10px; font-size: 13px; }
+  .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; align-items: start; }
+  .col { background: color-mix(in srgb, var(--card) 70%, transparent); border: 1px solid var(--border); border-radius: 16px; padding: 12px; min-height: 120px; }
+  .col h2 { font-size: 15px; margin: 0 0 10px; display: flex; justify-content: space-between; }
+  .col h2 span { color: var(--muted); font-weight: 400; }
+  .card { background: var(--card); border: 1px solid var(--border); border-left: 5px solid var(--c); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; display: grid; gap: 4px; }
+  .card strong { font-size: 16px; }
+  .card small { color: var(--muted); }
+  .card .notes { font-size: 14px; white-space: pre-wrap; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .row select { padding: 4px 6px; font-size: 13px; }
+  .flag { color: #b45309; background: #fef3c7; border-radius: 99px; font-size: 12px; font-weight: 700; padding: 2px 9px; width: fit-content; }
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 14px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128203; Job Application Tracker</h1>
+  <a href="../../index.html">&larr; Back to portfolio</a>
+</header>
+<main>
+  <div class="stats" id="stats"></div>
+
+  <form id="form">
+    <label>Company *<input id="company" required placeholder="e.g. Acme Ltd"></label>
+    <label>Role *<input id="role" required placeholder="e.g. Junior Developer"></label>
+    <label>Date applied<input id="date" type="date"></label>
+    <label>Status
+      <select id="status">
+        <option>Applied</option><option>Interviewing</option><option>Offer</option><option>Rejected</option>
+      </select>
+    </label>
+    <label>Job link<input id="link" type="url" placeholder="https://..."></label>
+    <label class="wide">Notes<textarea id="notes" placeholder="Contact name, interview date, things to remember..."></textarea></label>
+    <div class="wide row">
+      <button type="submit">Add application</button>
+      <button type="button" class="ghost" id="exportBtn">Export CSV</button>
+    </div>
+  </form>
+
+  <div class="board" id="board"></div>
+</main>
+
+<script>
+const STATUSES = ['Applied', 'Interviewing', 'Offer', 'Rejected'];
+const COLORS = { Applied: 'var(--applied)', Interviewing: 'var(--interviewing)', Offer: 'var(--offer)', Rejected: 'var(--rejected)' };
+const KEY = 'job-tracker-v1';
+
+let apps = load();
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(apps)); } catch (e) { /* storage may be blocked */ }
+}
+const today = () => new Date().toISOString().slice(0, 10);
+const daysSince = d => Math.floor((Date.now() - new Date(d + 'T00:00:00').getTime()) / 86400000);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function render() {
+  const total = apps.length;
+  const count = s => apps.filter(a => a.status === s).length;
+  const responded = total - count('Applied');
+  document.getElementById('stats').innerHTML =
+    `<div class="stat"><b>${total}</b>Total</div>` +
+    STATUSES.map(s => `<div class="stat"><b>${count(s)}</b>${s}</div>`).join('') +
+    `<div class="stat"><b>${total ? Math.round(responded / total * 100) : 0}%</b>Got a response</div>`;
+
+  document.getElementById('board').innerHTML = STATUSES.map(s => {
+    const items = apps.filter(a => a.status === s).sort((a, b) => b.date.localeCompare(a.date));
+    return `<section class="col"><h2 style="color:${COLORS[s]}">${s} <span>${items.length}</span></h2>` +
+      (items.length ? items.map(card).join('') : '<div class="empty">Nothing here yet</div>') + '</section>';
+  }).join('');
+}
+
+function card(a) {
+  const age = daysSince(a.date);
+  const follow = a.status === 'Applied' && age >= 7 ? `<span class="flag">Follow up? Applied ${age} days ago</span>` : '';
+  const link = a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">View job posting</a>` : '';
+  return `<div class="card" style="--c:${COLORS[a.status]}">
+    <strong>${esc(a.company)}</strong>
+    <span>${esc(a.role)}</span>
+    <small>Applied ${esc(a.date)}</small>
+    ${follow}
+    ${a.notes ? `<div class="notes">${esc(a.notes)}</div>` : ''}
+    ${link}
+    <div class="row">
+      <select data-id="${a.id}" class="move">${STATUSES.map(s => `<option ${s === a.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      <button class="small ghost del" data-id="${a.id}">Delete</button>
+    </div>
+  </div>`;
+}
+
+document.getElementById('date').value = today();
+
+document.getElementById('form').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = id => document.getElementById(id).value.trim();
+  apps.push({ id: Date.now() + Math.random().toString(16).slice(2), company: v('company'), role: v('role'),
+              date: v('date') || today(), status: v('status'), link: v('link'), notes: v('notes') });
+  save(); render();
+  e.target.reset(); document.getElementById('date').value = today();
+  document.getElementById('company').focus();
+});
+
+document.getElementById('board').addEventListener('change', e => {
+  if (!e.target.classList.contains('move')) return;
+  const a = apps.find(x => x.id === e.target.dataset.id);
+  if (a) { a.status = e.target.value; save(); render(); }
+});
+document.getElementById('board').addEventListener('click', e => {
+  if (!e.target.classList.contains('del')) return;
+  const a = apps.find(x => x.id === e.target.dataset.id);
+  if (a && confirm('Delete the application to ' + a.company + '?')) {
+    apps = apps.filter(x => x !== a); save(); render();
+  }
+});
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const rows = [['Company', 'Role', 'Date', 'Status', 'Link', 'Notes']].concat(
+    apps.map(a => [a.company, a.role, a.date, a.status, a.link, a.notes]));
+  const blob = new Blob([rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' });
+  const el = document.createElement('a');
+  el.href = URL.createObjectURL(blob); el.download = 'job-applications.csv'; el.click();
+  URL.revokeObjectURL(el.href);
+});
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+HOW TO PUT THIS PORTFOLIO ON GITHUB (FREE)
+==========================================
+
+STEP 1 - Make your pages yours (10 minutes)
+  Open index.html in Notepad. Search for "Your Name", "YOUR-USERNAME", "you@example.com"
+  and replace them with your real details. Do the same in README.md.
+  Tip: anything with class="edit-me" in index.html is placeholder text.
+
+STEP 2 - Create a GitHub account (if you don't have one)
+  Go to https://github.com and click "Sign up". Pick a professional username
+  (employers will see it, e.g. firstname-lastname). You must do this step yourself.
+
+STEP 3 - Create the repository
+  Click the "+" at the top right of GitHub -> "New repository".
+  Name it:  portfolio      (or  YOUR-USERNAME.github.io  for a shorter web address)
+  Make it Public. Do NOT tick "Add a README". Click "Create repository".
+
+STEP 4 - Upload your files (easiest way, no commands)
+  On the new empty repository page, click "uploading an existing file".
+  Drag in EVERYTHING inside the "My Portfolio" folder (index.html, README.md, games, projects).
+  Click "Commit changes".
+
+  (Or ask Claude to run the git commands for you once you've done steps 2-3.)
+
+STEP 5 - Turn on your website
+  Repository -> Settings -> Pages -> under "Branch" choose "main" and "/ (root)" -> Save.
+  After about a minute your site is live at:
+      https://YOUR-USERNAME.github.io/portfolio/
+
+STEP 6 - Make it work for you
+  - Put the website link on your CV/resume and LinkedIn.
+  - On your GitHub profile, "pin" this repository.
+  - Fill in the "What I learned" section in README.md in your own words.
+
+KEEP IMPROVING (this is what gets people hired)
+  - Add a new small project every few weeks. Commit often - a busy GitHub looks great.
+  - Read the code of your games. Change a colour, a speed, a rule. Be able to explain it.
+  - Next ideas: a quiz app, a weather app (uses an online API), a to-do list with React.
