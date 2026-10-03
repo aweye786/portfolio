@@ -2,7 +2,7 @@
 
 A personal portfolio website with three projects I built using HTML, CSS and JavaScript. No frameworks, no installs: open `index.html` and everything works.
 
-**Live site:** https://YOUR-USERNAME.github.io/YOUR-REPO/  <!-- change after publishing -->
+**Live site:** https://kaderaweye-cmyk.github.io/portfolio/
 
 ## Projects
 
@@ -40,5 +40,4 @@ projects/job-tracker/         Job Application Tracker
 
 ## Contact
 
-- Email: you@example.com
-- GitHub: https://github.com/YOUR-USERNAME
+- GitHub: https://github.com/kaderaweye-cmyk
